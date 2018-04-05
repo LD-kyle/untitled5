@@ -4,17 +4,30 @@ import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
 
-def get_detail(url):
-    detail=[]
+
+def get_detail_imgs(url):
+    detail = []
     r = requests.get(url)
     soup = BeautifulSoup(r.text, 'html.parser')
     div = soup.find('div', {'class': 'gMain'})
-    detail.append(div.hl.text)
+    detail.append(div.h1.text)
     td = div.findAll('td')
     detail = detail + [td[i].text.strip() for i in range(1, 86, 2)]
     detail = detail + [td[i].text.strip() for i in range(92, 97)]
     detail.append(td[98].text.strip())
-    return detail
+    tmp = soup.find('div', {'id': 'noticeImage'}).ul.findAll('img')
+    imgs = [img.attrs['src'] for img in tmp]
+    return detail, imgs
+
+
+def download_imgs(path, prefix, imgs):
+    for i in range(0, len(imgs)):
+        r = requests.get(imgs[i])
+        filename = '{}_{:02d}.jpg'.format(prefix, i)
+        with open(Path(path).joinpath(filename), 'wb') as f:
+            for chunk in r:
+                f.write(chunk)
+
 
 def get_notice_page(soup):
     div = soup.find('div', {'class': 'gMain'})
@@ -22,23 +35,22 @@ def get_notice_page(soup):
     return [td[i].a.attrs['href'] for i in range(0, len(td), 3)]
 
 
-
-
 def get_notice_index(notice):
-    url = 'http://www.cn357.com/notice_' +  str(notice)
+    url = 'http://www.cn357.com/notice_' + str(notice)
     r = requests.get(url)
     soup = BeautifulSoup(r.text, 'html.parser')
 
     span = soup.find('span', {'class': 'pageList'})
     total = int(span.findChildren()[-2].text)
     index = get_notice_page(soup)
-    for i in range(2, total+1):
+    for i in range(2, total + 1):
         r = requests.get(url + '_' + str(i))
         soup = BeautifulSoup(r.text, 'html.parser')
         index = index + get_notice_page(soup)
     return index
 
-def crawl(index, out_filename):
+
+def crawl(index, out_filename, img_path):
     url = 'http://www.cn357.com'
     header = ['标题', '变更(扩展)记录', '公告型号', '公告批次', '品牌',
               '类型', '额定质量', '总质量', '整备质量', '燃料种类',
@@ -56,14 +68,14 @@ def crawl(index, out_filename):
         detail_wirter.writerow(header)
         for x in index:
             try:
-                detail = get_detail(url + x)
+                detail, imgs = get_detail_imgs(url + x)
                 detail_wirter.writerow(detail)
+                download_imgs(img_path, x[7:], imgs)
             except Exception as e:
-                print(x,e)
+                print(x, e)
 
 
-
-if __name__=='__main__':
-    for notice in range(1, 305):
-        index=get_notice_index(notice)
-        crawl(index, str(notice))
+if __name__ == '__main__':
+    for notice in range(2,305):
+        index =get_notice_index(notice)
+        crawl(index,str(index) + '.csv','img')
